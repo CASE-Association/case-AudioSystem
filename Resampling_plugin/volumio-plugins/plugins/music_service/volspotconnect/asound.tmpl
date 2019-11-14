@@ -1,0 +1,16 @@
+pcm.spotoutf
+{
+type dmix
+slave {
+pcm ${hwout}
+rate 44100
+        }
+ipc_key 1024
+}
+pcm.spotout
+{
+type plug
+slave.pcm spotoutf
+}
+
+defaults.pcm.rate_converter "speexrate_high"

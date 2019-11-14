@@ -1,0 +1,117 @@
+{
+	"page": {
+		"label": "TRANSLATE.VOLUMIO_VOLGRP"
+	},
+	"sections": [
+		{
+			"id": "section_account",
+			"element": "section",
+			"label": "TRANSLATE.VOLGRP_SETTINGS",
+			"icon": "fa-plug",
+			"onSave": {
+				"type": "controller",
+				"endpoint": "audio_interface/volgrp",
+				"method": "savevolgrp"
+			},
+			"saveButton": {
+				"label": "TRANSLATE.APPLY",
+				"data": [
+					"rate",
+					"bitdepth",
+					"quality"
+				]
+			},
+			"content": [
+				{
+					"id": "rate",
+					"element": "select",
+					"doc": "TRANSLATE.DOCVOLGRPRATE",
+					"label": "TRANSLATE.VOLGRPRATE",
+					"value": {
+						"value": "44100",
+						"label": "44100Hz"
+					},
+					"options": [
+						{
+							"value": "44100",
+							"label": "44100Hz"
+						},
+						{
+							"value": "48000",
+							"label": "48000Hz"
+						},
+						{
+							"value": "88200",
+							"label": "88200Hz"
+						},
+{
+							"value": "96000",
+							"label": "96000Hz"
+						},
+						{
+							"value": "176400",
+							"label": "176400Hz"
+						},
+						{
+							"value": "192000",
+							"label": "192000Hz"
+						},
+						{
+							"value": "384000",
+							"label": "384000Hz"
+						}
+					]
+				},
+{
+					"id": "bitdepth",
+					"element": "select",
+					"doc": "TRANSLATE.DOCVOLGRPBITDEPTH",
+					"label": "TRANSLATE.VOLGRPBITDEPTH",
+					"value": {
+						"value": "S16_LE",
+						"label": "16b"
+					},
+					"options": [
+						
+						{
+							"value": "S16_LE",
+							"label": "16b"
+						},
+						{
+							"value": "S24_LE",
+							"label": "24b"
+						},
+						{
+							"value": "S32_LE",
+							"label": "32b"
+						}
+					]
+				},
+{
+					"id": "quality",
+					"element": "select",
+					"doc": "TRANSLATE.DOCVOLGRPQUALITY",
+					"label": "TRANSLATE.VOLGRPQUALITY",
+					"value": {
+						"value": "speexrate_medium",
+						"label": "medium"
+					},
+					"options": [
+						{
+							"value": "speexrate",
+							"label": "TRANSLATE.LABELPS1"
+						},
+						{
+							"value": "speexrate_medium",
+							"label": "TRANSLATE.LABELPS2"
+						},
+						{
+							"value": "speexrate_best",
+							"label": "TRANSLATE.LABELPS3"
+						}
+					]
+				}
+			]
+		}
+	]
+}

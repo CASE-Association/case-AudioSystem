@@ -1,0 +1,18 @@
+{
+   "username": {
+      "type": "string",
+      "value": ""
+  },
+  "password": {
+    "type": "string",
+    "value": ""
+  },
+ "bitrate": {
+    "type": "boolean",
+    "value": true
+  },
+  "familyshare": {
+    "type": "boolean",
+    "value": true
+  }
+}

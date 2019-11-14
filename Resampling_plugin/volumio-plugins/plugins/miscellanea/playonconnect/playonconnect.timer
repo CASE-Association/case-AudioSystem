@@ -1,0 +1,12 @@
+[Unit]
+Description=Runs playonconnect every 5sec
+[Timer]
+# Time to wait after booting before we run first time
+OnBootSec=1min
+# Time between running each consecutive time
+OnUnitActiveSec=5sec
+AccuracySec=1
+Unit=playonconnect.service
+
+[Install]
+WantedBy=multi-user.target

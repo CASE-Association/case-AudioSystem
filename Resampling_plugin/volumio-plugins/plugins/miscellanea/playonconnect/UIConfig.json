@@ -1,0 +1,39 @@
+{
+  "page": {
+    "label": "TRANSLATE.PLAYONCONNECT.PLAYONCONNECT"
+  },
+  "sections": [ 
+   {
+      "id": "section_account",
+      "element": "section",
+      "label": "TRANSLATE.PLAYONCONNECT.PLAYONCONNECTCONF",
+      "icon": "fa-plug",
+      "onSave": {"type":"controller", "endpoint":"miscellanea/playonconnect", "method":"saveplayonconnectAccount"},
+      "saveButton": {
+        "label": "TRANSLATE.PLAYONCONNECT.SAVE",
+        "data": [
+          "serverip",
+          "streamtoplay"
+        ]
+      },
+      "content": [
+      	{
+          "id":"serverip",
+          "type":"text",
+          "element": "input",
+          "doc": "Ip of device to monitor",
+          "label": "TRANSLATE.PLAYONCONNECT.SERVERIP",
+          "value": "192.168.1.10"
+        },
+        {
+          "id":"streamtoplay",
+          "type":"text",
+          "element": "input",
+          "doc": "playlist to play",
+          "label": "TRANSLATE.PLAYONCONNECT.STREAMTOPLAY",
+          "value": "NOT IN USE!"
+        }
+      ]
+   }
+  ]
+}

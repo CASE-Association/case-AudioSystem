@@ -1,0 +1,16 @@
+{
+ "VOLSPOTCONNECT":{
+ "VOLSPOTCONNECTCONF":"Volumio Spotify connect Configuration",
+ "VOLSPOTCONNECTACCOUNT":"Spotify account",
+ "USERNAME":"username",
+ "PASSWORD":"password",
+ "HIGHBITRATE":"Set for high bitrate",
+ "FAMILYSHARE":"Shared device",
+ "SAVE":"Save",
+ "TIPSPOTACCOUNT":"This is the username of your Spotify account",
+ "TIPSPOTPASSWD":"This is the password of your Spotify account",
+ "TIPBITRATE":"Stream Quality",
+ "TIPSHAREDDEVICE":"Enable to share your device with other user on your local network",
+ "MESSCONFIGSAVE":"New volspotconnect configuration saved"
+ }
+}
