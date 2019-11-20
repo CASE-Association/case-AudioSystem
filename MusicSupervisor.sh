@@ -40,4 +40,5 @@ echo "System time: $currenttime"
 
 
 
-echo "Audio supervisor done."
+# shellcheck disable=SC2028
+echo "\n\nAudio supervisor done."
