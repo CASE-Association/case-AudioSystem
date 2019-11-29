@@ -3,12 +3,35 @@
 from __future__ import unicode_literals
 import json, sys
 from socketIO_client import SocketIO
-from time import time, sleep
+import time
+import datetime as dt
+import pytz
+from time import sleep
 from threading import Thread
 from hardware import *
 from modules.logger import *
 import RPi.GPIO as GPIO
+import os
+
 GPIO.setmode(GPIO.BCM)
+
+
+# Configs:
+t_open = datetime.time(07, 00)  # 07:00
+t_case = datetime.time(18, 49)  # 17:00
+t_clean = datetime.time(23, 30)  # Time to lower music and clean
+t_closing = datetime.time(20, 59)  # 00:00
+maxvol_cleaning = 75
+maxvol_lab = 80
+maxvol_case = 100
+
+# Setup control button inputs.
+btn_prew = None
+btn_pp = None
+btn_nxt = None
+# GPIO.setup(btn_prew, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # Prew
+# GPIO.setup(btn_pp, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # Play/Pause
+# GPIO.setup(btn_nxt, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # Next
 
 log = Log(LOGLEVEL.INFO)
 
@@ -18,18 +41,14 @@ VOLUME_DT = 5  # volume adjustment step
 
 volumioIO = SocketIO(volumio_host, volumio_port)
 
-STATE_NONE = -1
-STATE_PLAYER = 0
-STATE_PLAYLIST_MENU = 1
-STATE_QUEUE_MENU = 2
-STATE_VOLUME = 3
-STATE_SHOW_INFO = 4
-STATE_LIBRARY_MENU = 5
-STATE_CLOCK = 6
 
-DSP.state = STATE_NONE
-DSP.stateTimeout = 0
-DSP.timeOutRunning = True
+class DigitalSoundProcessor:
+    def __init__(self):
+        pass
+
+
+DSP = DigitalSoundProcessor
+
 DSP.activeSong = 'AMPI'
 DSP.activeArtist = 'VOLUMIO'
 DSP.playState = 'unknown'
@@ -43,15 +62,11 @@ DSP.libraryFull = []
 DSP.libraryNames = []
 DSP.volume = 0
 DSP.source = None
+DSP.closed = False
 
 emit_volume = False
 emit_track = False
 
-def LoadPlaylist(playlistname):
-    log.info("loading playlist: " + playlistname.encode('ascii', 'ignore'))
-    DSP.playPosition = 0
-    volumioIO.emit('playPlaylist', {'name': playlistname})
-    DSP.state = STATE_PLAYER
 
 def onPushState(data):
     newStatus = None
@@ -83,16 +98,12 @@ def onPushState(data):
 
     if 'seek' in data:
         DSP.ptime = data['seek']
-        NowPlayingScreen.ptime = DSP.ptime
 
     if 'duration' in data:
         DSP.duration = data['duration']
 
-    if DSP.state != STATE_VOLUME:  # get volume on startup and remote control
-        try:  # it is either number or unicode text
-            DSP.volume = int(data['volume'])
-        except (KeyError, ValueError):
-            pass
+    if 'volume' in data:
+        DSP.volume = data['volume']
 
     if 'disableVolumeControl' in data:
         DSP.volumeControlDisabled = data['disableVolumeControl']
@@ -101,17 +112,9 @@ def onPushState(data):
         log.info("New Song: " + "\033[94m" + newSong.encode('ascii', 'ignore') + "\033[0m")
         DSP.activeSong = newSong
         DSP.activeArtist = newArtist
-        if DSP.state == STATE_PLAYER and newStatus != 'stop':
-            DSP.modal.UpdatePlayingInfo(newArtist, newSong)
 
     if newStatus != DSP.playState:
         DSP.playState = newStatus
-        if DSP.state == STATE_PLAYER:
-            if DSP.playState == 'play':
-                iconTime = 35
-            else:
-                iconTime = 80
-            DSP.modal.SetPlayingIcon(DSP.playState, iconTime)
 
 
 def onPushQueue(data):
@@ -125,70 +128,58 @@ def onPushBrowseSources(data):
         log.blue(item['uri'])
 
 
-def onLibraryBrowse(data):
-    DSP.libraryFull = data
-    itemList = DSP.libraryFull['navigation']['lists'][0]['items']
-    DSP.libraryNames = [item['title'] if 'title' in item else 'empty' for item in itemList]
-    DSP.state = STATE_LIBRARY_MENU
-
-
-def EnterLibraryItem(itemNo):
-    selectedItem = DSP.libraryFull['navigation']['lists'][0]['items'][itemNo]
-    log.info("Entering library item: " + DSP.libraryNames[itemNo].encode('ascii', 'ignore'))
-    if selectedItem['type'][-8:] == 'category' or selectedItem['type'] == 'folder':
-        volumioIO.emit('browseLibrary', {'uri': selectedItem['uri']})
-    else:
-        log.info("Sending new Queue")
-        volumioIO.emit('clearQueue')  # clear queue and add whole list of items
-        DSP.queue = []
-        volumioIO.emit('addToQueue', DSP.libraryFull['navigation']['lists'][0]['items'])
-        DSP.stateTimeout = 5.0  # maximum time to load new queue
-        while len(DSP.queue) == 0 and DSP.stateTimeout > 0.1:
-            sleep(0.1)
-        DSP.stateTimeout = 0.2
-        log.info("Play position = " + str(itemNo))
-        volumioIO.emit('play', {'value': itemNo})
-
-
-def LibraryReturn():  # go to parent category
-    if not 'prev' in DSP.libraryFull['navigation']:
-        DSP.state = STATE_PLAYER
-    else:
-        parentCategory = DSP.libraryFull['navigation']['prev']['uri']
-        log.info("Navigating to parent category in library: " + parentCategory.encode('ascii', 'ignore'))
-        if parentCategory != '' and parentCategory != '/':
-            volumioIO.emit('browseLibrary', {'uri': parentCategory})
-        else:
-            DSP.state= STATE_PLAYER
-
-
 def onPushListPlaylist(data):
     global DSP
     if len(data) > 0:
         DSP.playlistoptions = data
 
 
+def onNextBtnEvent():
+    volumioIO.emit('next', '')
+
+
+def onPPBtnEvent(state='toggle'):
+    volumioIO.emit(state, '')
+
+
+def onPrewBtnEveny():
+    volumioIO.emit('prev', '')
+
+
 """
 Startup initializer
 """
+print('\033[92m \n'
+         '   _________________________________________________________________________________________________\n'
+         ' /\033[95m      ____    _    ____  _____ \033[94m     _             _ _       \033[91m  ____            _                    \033[92m\ \n'
+         '|\033[95m      / ___|  / \  / ___|| ____|\033[94m    / \  _   _  __| (_) ___  \033[91m / ___| _   _ ___| |_ ___ _ __ ___      \033[92m|\n'
+         '|\033[95m     | |     / _ \ \___ \|  _|  \033[94m   / _ \| | | |/ _` | |/ _ \ \033[91m \___ \| | | / __| __/ _ \  _ ` _ \     \033[92m|\n'
+         '|\033[95m     | |___ / ___ \ ___) | |___ \033[94m  / ___ \ |_| | (_| | | (_) |\033[91m  ___) | |_| \__ \ |_  __/ | | | | |    \033[92m|\n'
+         '|\033[95m      \____/_/   \_\____/|_____|\033[94m /_/   \_\__,_|\__,_|_|\___/ \033[91m |____/ \__, |___/\__\___|_| |_| |_|    \033[92m|\n'
+         '|                                                                    \033[91m |___/\033[90m By Stefan Larsson 2019    \033[92m|\n'
+         ' \__________________________________________________________________________________________________ /\033[0m \n')
+
 
 def _receive_thread():
     volumioIO.wait()
+
+
+# GPIO.add_event_callback(btn_nxt, GPIO.FALLING, callback=onNextBtnEvent(), bouncetime=300)
+# GPIO.add_event_callback(btn_pp, GPIO.FALLING, callback=onPPBtnEvent(), bouncetime=300)
+# GPIO.add_event_callback(btn_prew, GPIO.FALLING, callback=onPrewBtnEveny(), bouncetime=300)
 
 receive_thread = Thread(target=_receive_thread, name="Receiver")
 receive_thread.daemon = True
 
 volumioIO.on('pushState', onPushState)
-volumioIO.on('pushListPlaylist', onPushListPlaylist)
 volumioIO.on('pushQueue', onPushQueue)
+volumioIO.on('pushListPlaylist', onPushListPlaylist)
 volumioIO.on('pushBrowseSources', onPushBrowseSources)
-# volumioIO.on('pushBrowseLibrary', onLibraryBrowse)
 
 # get list of Playlists and initial state
 volumioIO.emit('listPlaylist')
 volumioIO.emit('getState')
-volumioIO.emit('getQueue')
-#volumioIO.emit('getBrowseSources')
+#volumioIO.emit('getQueue')
 sleep(0.1)
 try:
     with open('DSPconfig.json', 'r') as f:  # load last playing track number
@@ -200,18 +191,43 @@ else:
 
 receive_thread.start()
 
+# todo Implement: if longpress on p/p -> disconnect current user(restart client)
+
+
+
+def t_in_range(start, end):  # Check if current time is in given range
+    now_time = datetime.datetime.now().time()
+    return start <= now_time <= end
+
+
+def volume_guard(limit, start, stop):  # Check if volume state is ok
+    global emit_volume
+    # Check if volume is not over limit if time is in timespan.
+    if t_in_range(start, stop) and DSP.volume > limit:
+        log.warn('Music over limit! ({}%), New volume level: {}%'.format(DSP.volume, limit))
+        DSP.volume = maxvol_cleaning
+        emit_volume = True
+        return False
+    return True
+
+
+def reset_Spotify_connect():
+    try:
+        #os.system("systemctl restart volspotconnect2")  # Restart Spotify Connect client.
+        log.warn("Spotify Connect was reset!")
+    except Exception as err:
+        log.err("Spotify reset error, ", err)
 
 def main():
     global emit_volume, emit_track
+
     while True:
         if emit_volume:
             emit_volume = False
             log.info("Volume: " + str(DSP.volume))
             volumioIO.emit('volume', DSP.volume)
-            DSP.state=STATE_VOLUME
-            DSP.stateTimeout = 0.01
 
-        if emit_track and DSP.stateTimeout < 4.5:
+        if emit_track:
             emit_track = False
             try:
                 log.info('Track selected: ' + str(DSP.playPosition + 1) + '/' + str(len(DSP.queue)) + ' ' + DSP.queue[
@@ -220,9 +236,36 @@ def main():
                 pass
             volumioIO.emit('play', {'value': DSP.playPosition})
 
+        if t_in_range(t_open, t_closing):  # If lab is open
+            DSP.closed = False
+            # Check if music state is ok
+            if not volume_guard(maxvol_case, t_case, t_clean) and \
+                    not volume_guard(maxvol_lab, t_open, t_case) and \
+                    not volume_guard(maxvol_cleaning, t_clean, t_closing):
+                # State not ok
+                pass
+
+            else:
+                # State ok
+                log.info("Everything is ok.")
+                time.sleep(1)
+        else:   # If Lab is closed
+            # Stop music
+            if not DSP.closed:
+                DSP.closed = True
+                DSP.volume = 0     # Turn down volume
+                #emit_volume = True
+                #volumioIO.emit('stop')  # Stop playing music request
+                time.sleep(1)
+                reset_Spotify_connect()  # Disconnect Spotify Connection
+            log.info("Lab is close until: {}".format(t_open.strftime('%H:%M')))
+            time.sleep(10)
+
+
 
 def defer():
     try:
+        GPIO.cleanup()
         receive_thread.join(1)
         DSP.cleanup()
         log.info("System exit ok")
@@ -230,9 +273,9 @@ def defer():
     except Exception as err:
         log.err("Defer Error: " + str(err))
 
+
 if __name__ == '__main__':
     try:
         main()
     except(KeyboardInterrupt, SystemExit):
-        defer() # todo make work!
-
+        defer()  # todo make work!
