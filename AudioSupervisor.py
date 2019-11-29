@@ -17,10 +17,10 @@ GPIO.setmode(GPIO.BCM)
 
 
 # Configs:
-t_open = datetime.time(07, 00)  # 07:00
-t_case = datetime.time(18, 49)  # 17:00
+t_open = datetime.time(07, 00)  # CASE LAB time
+t_case = datetime.time(18, 49)  # CASE Association time
 t_clean = datetime.time(23, 30)  # Time to lower music and clean
-t_closing = datetime.time(20, 59)  # 00:00
+t_closing = datetime.time(23, 59)  # Closing time
 maxvol_cleaning = 75
 maxvol_lab = 80
 maxvol_case = 100
@@ -51,7 +51,6 @@ DSP = DigitalSoundProcessor
 
 DSP.activeSong = 'AMPI'
 DSP.activeArtist = 'VOLUMIO'
-DSP.playState = 'unknown'
 DSP.playPosition = 0
 DSP.ptime = 0
 DSP.duration = 0
@@ -149,16 +148,19 @@ def onPrewBtnEveny():
 """
 Startup initializer
 """
+
 print('\033[92m \n'
-         '   _________________________________________________________________________________________________\n'
+         '  ___________________________________________________________________________________________________\n'
          ' /\033[95m      ____    _    ____  _____ \033[94m     _             _ _       \033[91m  ____            _                    \033[92m\ \n'
          '|\033[95m      / ___|  / \  / ___|| ____|\033[94m    / \  _   _  __| (_) ___  \033[91m / ___| _   _ ___| |_ ___ _ __ ___      \033[92m|\n'
          '|\033[95m     | |     / _ \ \___ \|  _|  \033[94m   / _ \| | | |/ _` | |/ _ \ \033[91m \___ \| | | / __| __/ _ \  _ ` _ \     \033[92m|\n'
          '|\033[95m     | |___ / ___ \ ___) | |___ \033[94m  / ___ \ |_| | (_| | | (_) |\033[91m  ___) | |_| \__ \ |_  __/ | | | | |    \033[92m|\n'
          '|\033[95m      \____/_/   \_\____/|_____|\033[94m /_/   \_\__,_|\__,_|_|\___/ \033[91m |____/ \__, |___/\__\___|_| |_| |_|    \033[92m|\n'
          '|                                                                    \033[91m |___/\033[90m By Stefan Larsson 2019    \033[92m|\n'
-         ' \__________________________________________________________________________________________________ /\033[0m \n')
+         ' \___________________________________________________________________________________________________/\033[0m\n')
 
+if os.geteuid() != 0:
+    log.warn("You must run as Root to close Spotify connection!")
 
 def _receive_thread():
     volumioIO.wait()
@@ -194,7 +196,6 @@ receive_thread.start()
 # todo Implement: if longpress on p/p -> disconnect current user(restart client)
 
 
-
 def t_in_range(start, end):  # Check if current time is in given range
     now_time = datetime.datetime.now().time()
     return start <= now_time <= end
@@ -205,7 +206,7 @@ def volume_guard(limit, start, stop):  # Check if volume state is ok
     # Check if volume is not over limit if time is in timespan.
     if t_in_range(start, stop) and DSP.volume > limit:
         log.warn('Music over limit! ({}%), New volume level: {}%'.format(DSP.volume, limit))
-        DSP.volume = maxvol_cleaning
+        DSP.volume = limit
         emit_volume = True
         return False
     return True
@@ -213,10 +214,14 @@ def volume_guard(limit, start, stop):  # Check if volume state is ok
 
 def reset_Spotify_connect():
     try:
-        #os.system("systemctl restart volspotconnect2")  # Restart Spotify Connect client.
-        log.warn("Spotify Connect was reset!")
+        if os.geteuid() != 0:
+            log.warn("You must run as Root to reset Spotify connect!")
+        else:
+            os.system("systemctl restart volspotconnect2")  # Restart Spotify Connect client.
+            log.warn("Spotify Connect was reset!")
     except Exception as err:
         log.err("Spotify reset error, ", err)
+
 
 def main():
     global emit_volume, emit_track
@@ -238,27 +243,28 @@ def main():
 
         if t_in_range(t_open, t_closing):  # If lab is open
             DSP.closed = False
-            # Check if music state is ok
-            if not volume_guard(maxvol_case, t_case, t_clean) and \
+            # Check if music state is ok. If weekend, only open hours matters.
+            if not datetime.datetime.today().weekday() in {6, 7} and \
+                    volume_guard(maxvol_case, t_case, t_clean) and \
                     not volume_guard(maxvol_lab, t_open, t_case) and \
                     not volume_guard(maxvol_cleaning, t_clean, t_closing):
-                # State not ok
-                pass
+                # Audio state have changed
+                log.info("New Audio State")
 
             else:
-                # State ok
-                log.info("Everything is ok.")
-                time.sleep(1)
+                # Audio state ok
+                pass
+
         else:   # If Lab is closed
             # Stop music
             if not DSP.closed:
                 DSP.closed = True
                 DSP.volume = 0     # Turn down volume
-                #emit_volume = True
-                #volumioIO.emit('stop')  # Stop playing music request
+                emit_volume = True
+                volumioIO.emit('stop')  # Stop playing music request
                 time.sleep(1)
                 reset_Spotify_connect()  # Disconnect Spotify Connection
-            log.info("Lab is close until: {}".format(t_open.strftime('%H:%M')))
+                log.info("Lab is closed until: {}".format(t_open.strftime('%H:%M')))
             time.sleep(10)
 
 
@@ -267,7 +273,6 @@ def defer():
     try:
         GPIO.cleanup()
         receive_thread.join(1)
-        DSP.cleanup()
         log.info("System exit ok")
 
     except Exception as err:
