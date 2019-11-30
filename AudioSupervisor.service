@@ -1,0 +1,15 @@
+[Unit]
+Description=CASE Lab Audio Supervisor program.
+ 
+[Service]
+Type=simple
+WorkingDirectory=/home/volumio
+ExecStart=/usr/bin/python -u home/volumio/CASE_DSP/AudioSupervisor.py
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=audiospvsr
+User=root
+Group=volumio
+ 
+[Install]
+WantedBy=multi-user.target

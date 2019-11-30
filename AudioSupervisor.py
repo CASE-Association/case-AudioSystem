@@ -17,6 +17,7 @@ GPIO.setmode(GPIO.BCM)
 
 
 # Configs:
+t_session_timout = 900  # Seconds before Spotify connect timeout
 t_open = datetime.time(07, 00)  # CASE LAB time
 t_case = datetime.time(18, 49)  # CASE Association time
 t_clean = datetime.time(23, 30)  # Time to lower music and clean
@@ -51,6 +52,7 @@ DSP = DigitalSoundProcessor
 
 DSP.activeSong = 'AMPI'
 DSP.activeArtist = 'VOLUMIO'
+DSP.playState = 'Unknown'
 DSP.playPosition = 0
 DSP.ptime = 0
 DSP.duration = 0
@@ -62,6 +64,7 @@ DSP.libraryNames = []
 DSP.volume = 0
 DSP.source = None
 DSP.closed = False
+DSP.t_last_played = datetime.datetime.now()
 
 emit_volume = False
 emit_track = False
@@ -145,6 +148,69 @@ def onPrewBtnEveny():
     volumioIO.emit('prev', '')
 
 
+def t_in_range(start, end):
+    """
+    Check if current time is in given range
+    :param start: start time. datetime.time object
+    :param end: end time. datetime.time object
+    :return: True if in range, else False.
+    """
+    now_time = datetime.datetime.now().time()
+    return start <= now_time <= end
+
+
+def volume_guard(limit, start, end):
+    """
+    Check if volume percentage is acceptable if current time is in timespan.
+    :param limit: Volume limit in percentage.
+    :param start: interval start time. datetime.time object
+    :param end:  interval end time. datetime.time object
+    :return:
+    """
+    global emit_volume
+    if t_in_range(start, end) and DSP.volume > limit:
+        log.warn('Volume over limit! ({}%), New volume level: {}%'.format(DSP.volume, limit))
+        DSP.volume = limit
+        emit_volume = True
+        return False
+    return True
+
+
+def reset_Spotify_connect():
+    """
+    Reset Spotify connect service(volspotconnect2).
+    Requires root privileges.
+    :return: True if successful request.
+    """
+    try:
+        if os.geteuid() != 0:
+            log.warn("You must run as Root to reset Spotify connect!")
+            return False
+        else:
+            os.system("systemctl restart volspotconnect2")  # Restart Spotify Connect client.
+            log.info("Spotify Connect was reset")
+    except Exception as err:
+        log.err("Spotify reset error, ", err)
+        return False
+    return True
+
+
+def is_active_Spotify_connect(timeout=900):
+    """
+    Spotify Connect watchdog.
+    :param timeout: time in seconds after which inactive session is reset.
+    :return: returns true if session is active, else false.
+    """
+    t_delta = datetime.datetime.now() - DSP.t_last_played
+    if DSP.playState == 'playing' and DSP.source == 'spotify':
+        DSP.t_last_played = datetime.datetime.now()
+        return True
+    elif DSP.playState == 'stopped' and t_delta.seconds >= timeout:
+        log.info("Inactive Spotify Connect session detected.")
+        reset_Spotify_connect()
+    return False
+
+
 """
 Startup initializer
 """
@@ -160,7 +226,7 @@ print('\033[92m \n'
          ' \___________________________________________________________________________________________________/\033[0m\n')
 
 if os.geteuid() != 0:
-    log.warn("You must run as Root to close Spotify connection!")
+    log.warn("You must run as Root for Spotify Connect watchdog!")
 
 def _receive_thread():
     volumioIO.wait()
@@ -196,31 +262,7 @@ receive_thread.start()
 # todo Implement: if longpress on p/p -> disconnect current user(restart client)
 
 
-def t_in_range(start, end):  # Check if current time is in given range
-    now_time = datetime.datetime.now().time()
-    return start <= now_time <= end
 
-
-def volume_guard(limit, start, stop):  # Check if volume state is ok
-    global emit_volume
-    # Check if volume is not over limit if time is in timespan.
-    if t_in_range(start, stop) and DSP.volume > limit:
-        log.warn('Music over limit! ({}%), New volume level: {}%'.format(DSP.volume, limit))
-        DSP.volume = limit
-        emit_volume = True
-        return False
-    return True
-
-
-def reset_Spotify_connect():
-    try:
-        if os.geteuid() != 0:
-            log.warn("You must run as Root to reset Spotify connect!")
-        else:
-            os.system("systemctl restart volspotconnect2")  # Restart Spotify Connect client.
-            log.warn("Spotify Connect was reset!")
-    except Exception as err:
-        log.err("Spotify reset error, ", err)
 
 
 def main():
@@ -241,7 +283,7 @@ def main():
                 pass
             volumioIO.emit('play', {'value': DSP.playPosition})
 
-        if t_in_range(t_open, t_closing):  # If lab is open
+        if t_in_range(t_open, t_closing) and is_active_Spotify_connect(timeout=t_session_timout):  # If lab is open
             DSP.closed = False
             # Check if music state is ok. If weekend, only open hours matters.
             if not datetime.datetime.today().weekday() in {6, 7} and \
@@ -259,14 +301,13 @@ def main():
             # Stop music
             if not DSP.closed:
                 DSP.closed = True
-                DSP.volume = 0     # Turn down volume
+                DSP.volume = 0     # Turn off volume
                 emit_volume = True
                 volumioIO.emit('stop')  # Stop playing music request
                 time.sleep(1)
                 reset_Spotify_connect()  # Disconnect Spotify Connection
                 log.info("Lab is closed until: {}".format(t_open.strftime('%H:%M')))
             time.sleep(10)
-
 
 
 def defer():
@@ -283,4 +324,4 @@ if __name__ == '__main__':
     try:
         main()
     except(KeyboardInterrupt, SystemExit):
-        defer()  # todo make work!
+        defer()
