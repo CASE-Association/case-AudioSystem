@@ -4,8 +4,6 @@ from __future__ import unicode_literals
 import json, sys
 from socketIO_client import SocketIO
 import time
-import datetime as dt
-import pytz
 from time import sleep
 from threading import Thread
 from hardware import *
@@ -19,11 +17,11 @@ GPIO.setmode(GPIO.BCM)
 # Configs:
 t_session_timout = 900  # Seconds before Spotify connect timeout
 t_open = datetime.time(07, 00)  # CASE LAB time
-t_case = datetime.time(18, 49)  # CASE Association time
+t_case = datetime.time(17, 00)  # CASE Association time
 t_clean = datetime.time(23, 30)  # Time to lower music and clean
 t_closing = datetime.time(23, 59)  # Closing time
-maxvol_cleaning = 75
-maxvol_lab = 80
+maxvol_cleaning = 100   # 75
+maxvol_lab = 100    # 80 todo Fix volume bug in volumid setting volue = 100 always
 maxvol_case = 100
 
 # Setup control button inputs.
@@ -165,7 +163,7 @@ def volume_guard(limit, start, end):
     :param limit: Volume limit in percentage.
     :param start: interval start time. datetime.time object
     :param end:  interval end time. datetime.time object
-    :return:
+    :return: True if volume is ok
     """
     global emit_volume
     if t_in_range(start, end) and DSP.volume > limit:
@@ -202,10 +200,10 @@ def is_active_Spotify_connect(timeout=900):
     :return: returns true if session is active, else false.
     """
     t_delta = datetime.datetime.now() - DSP.t_last_played
-    if DSP.playState == 'playing' and DSP.source == 'spotify':
+    if DSP.playState == 'play' and DSP.source == 'spotify':
         DSP.t_last_played = datetime.datetime.now()
         return True
-    elif DSP.playState == 'stopped' and t_delta.seconds >= timeout:
+    elif DSP.playState == 'stop' and t_delta.seconds >= timeout:
         log.info("Inactive Spotify Connect session detected.")
         reset_Spotify_connect()
     return False
@@ -272,7 +270,7 @@ def main():
         if emit_volume:
             emit_volume = False
             log.info("Volume: " + str(DSP.volume))
-            volumioIO.emit('volume', DSP.volume)
+            #volumioIO.emit('volume', DSP.volume)
 
         if emit_track:
             emit_track = False
@@ -283,30 +281,33 @@ def main():
                 pass
             volumioIO.emit('play', {'value': DSP.playPosition})
 
-        if t_in_range(t_open, t_closing) and is_active_Spotify_connect(timeout=t_session_timout):  # If lab is open
-            DSP.closed = False
-            # Check if music state is ok. If weekend, only open hours matters.
-            if not datetime.datetime.today().weekday() in {6, 7} and \
-                    volume_guard(maxvol_case, t_case, t_clean) and \
-                    not volume_guard(maxvol_lab, t_open, t_case) and \
-                    not volume_guard(maxvol_cleaning, t_clean, t_closing):
-                # Audio state have changed
-                log.info("New Audio State")
+        if t_in_range(t_open, t_closing):   # Check if open hours
+            if is_active_Spotify_connect(timeout=t_session_timout):  # If Spotify connection is active.
+                if DSP.closed:
+                    DSP.closed = False
+                    log.info('Lab is open.')
+                # Check if music state need change. If weekend, only open hours matters.
+                if not datetime.datetime.today().weekday() in {-5, -6} and \
+                        not volume_guard(maxvol_case, t_case, t_clean) and \
+                        not volume_guard(maxvol_lab, t_open, t_case) and \
+                        not volume_guard(maxvol_cleaning, t_clean, t_closing):
+                    # Audio state have changed
+                    log.info("New Audio State")
 
-            else:
-                # Audio state ok
-                pass
+                else:
+                    # Audio state ok
+                    pass
 
         else:   # If Lab is closed
             # Stop music
-            if not DSP.closed:
+            if not DSP.closed and DSP.source == 'spotify':
                 DSP.closed = True
                 DSP.volume = 0     # Turn off volume
                 emit_volume = True
                 volumioIO.emit('stop')  # Stop playing music request
                 time.sleep(1)
                 reset_Spotify_connect()  # Disconnect Spotify Connection
-                log.info("Lab is closed until: {}".format(t_open.strftime('%H:%M')))
+                log.info("Lab closed, opens: {}".format(t_open.strftime('%H:%M')))
             time.sleep(10)
 
 

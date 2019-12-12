@@ -1,10 +1,10 @@
 [Unit]
-Description=CASE Lab Audio Supervisor program.
+Description=CASE Lab Audio Supervisor.
  
 [Service]
 Type=simple
 WorkingDirectory=/home/volumio
-ExecStart=/usr/bin/python -u home/volumio/CASE_DSP/AudioSupervisor.py
+ExecStart=/usr/bin/python -u /home/volumio/CASE_DSP/AudioSupervisor.py
 StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier=audiospvsr
