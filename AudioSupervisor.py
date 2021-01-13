@@ -311,7 +311,7 @@ def main():
             time.sleep(10)
 
 
-def defer():
+def exit():
     try:
         GPIO.cleanup()
         receive_thread.join(1)
@@ -325,4 +325,4 @@ if __name__ == '__main__':
     try:
         main()
     except(KeyboardInterrupt, SystemExit):
-        defer()
+        exit()
