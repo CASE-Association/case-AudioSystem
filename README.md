@@ -1,4 +1,4 @@
-# Case Audio System
+# Case Audio SystEm
 
 ![Case DSP enclosure](./CASE_DSP_box.png)
 
