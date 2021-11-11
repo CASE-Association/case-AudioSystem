@@ -1,4 +1,4 @@
-# _Case Audio SystEm_
+# _Case Audio System_
 
 ![Case DSP enclosure](./CASE_DSP_box.png)
 
@@ -87,7 +87,7 @@ This guide was tested to be working on Volumio version *2.834*.
 
     Clone the DSP drivers:
     ````shell script
-    git clone https://github.com/MKSounds/ADAU1701-I2S-Audio-Driver-for-Raspberry-Pi
+    wget https://github.com/CASE-Association/case-AudioSystem/raw/master/adau1701-i2s.dtbo
     ````
 7. Copy drivers to overlays:
     ````shell script
@@ -108,16 +108,27 @@ This guide was tested to be working on Volumio version *2.834*.
     ![add to dacs.json](./soundcards.png)
     
     close the editor by ``ctrl + x`` then `y` and finally Enter.
-    
-9. Reboot the device
+      
+9. Add the DSP to the device tree:
+   ````shell script
+   sudo nano /boot/config.txt
+   ````
+   
+   And add the following line to the bottom of the file:
+   
+   ````shell script
+   dtoverlay=adau1701-i2s
+   ````
+   
+   close the editor by ``ctrl + x`` then `y` and finally Enter.
+   
+10. Reboot the device
     ````shell script
     sudo reboot
     ````
-10. The DSP driver shall now be installed and can be selected as output device:
+11. The DSP driver shall now be installed and can be selected as output device:
 
-    From the webpage, go to _Settings->PLAYBACK OPTIONS_ and enable **I2S DAC**
-
-    In the **DAC Model** dropdown menu, select **ADAU1701 I2S Output**
+    From the webpage, go to _Settings->PLAYBACK OPTIONS_ and select **ADAU1701 I2S Output** as the output device.
     
     Press **Save**
     
